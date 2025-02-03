@@ -5,11 +5,6 @@ const linux = os.linux;
 const net = std.net;
 const util = @import("./utils.zig");
 
-// WARN: Run this with SUDO, don't remember that please
-// Also mate, errno 1 means EPERM -> operation not permitted
-//
-// INFO: Also I'll be running this with one cmd arg - net ifi (either eth0 or eno1 is what I have)
-
 pub fn main() !u8 { // returning u8 'cause I also want to handle errors respectively
     // If I want to use cmd arguments I can still do os.args as in Go
 
@@ -24,8 +19,19 @@ pub fn main() !u8 { // returning u8 'cause I also want to handle errors respecti
 
     // const sockfd = try std.posix.socket(AF_PACKET, SOCK_RAW, ETH_P_ALL);
     const sockfd = linux.socket(util.AF_INET, util.SOCK_RAW, util.IPPROTO_TCP);
-    // defer linux.close(sockfd);
-    defer _ = util.close(sockfd);
+    // defer _ = util.close(sockfd);
+
+    if (sockfd < 0) {
+        print("Socket was wrongly initialized: fd: {}\n", .{sockfd});
+        return 1;
+    } else if (sockfd > std.math.maxInt(i32)) {
+        print("Socket was wrongly initialized: fd: {}\n", .{sockfd});
+        return 1;
+    }
+    print("Got the fd: {}\n", .{sockfd});
+    const sockfd_i32: i32 = @intCast(sockfd);
+
+    defer _ = linux.close(sockfd_i32);
 
     const eth = args[1]; // string as in "eno1" or "eth1" or "wlan"
     print("Eth val: {s}\n", .{eth});
@@ -36,10 +42,8 @@ pub fn main() !u8 { // returning u8 'cause I also want to handle errors respecti
     @memset(ifi.ifrn.name[eth_len..], 0);
 
     // I have to actually find the ifindex
-    // try std.posix.ioctl_SIOCGIFINDEX(sockfd, &ifi);
+    try std.posix.ioctl_SIOCGIFINDEX(sockfd_i32, &ifi);
     // linux.ioctl(sockfd, linux.SIOCGIFINDEX, &ifi);
-    // util.myIOCTL(sockfd, linux.SIOCGIFINDEX, &ifi);
-    try util.FindIFINDEX(sockfd, &ifi);
 
     print("Ifi val: {s}\nIfindex: {d}\n", .{ ifi.ifrn.name, ifi.ifru.ivalue });
 
@@ -50,6 +54,7 @@ pub fn main() !u8 { // returning u8 'cause I also want to handle errors respecti
         .port = 0,
     };
 
+    // this is for AF_PACKET -> so the ethernet layer
     // const addr = linux.sockaddr.ll{
     //     .family = AF_PACKET, // it defaults to AF_PACKET
     //     .protocol = ETH_P_ALL,
@@ -63,8 +68,7 @@ pub fn main() !u8 { // returning u8 'cause I also want to handle errors respecti
     var addr_size: u32 = @sizeOf(@TypeOf(addr));
 
     // Now as always I have to bind the sock
-    // try linux.bind(sockfd, @ptrCast(&addr), addr_size);
-    _ = util.bind(sockfd, @ptrCast(&addr), addr_size);
+    _ = linux.bind(sockfd_i32, @ptrCast(&addr), addr_size);
 
     print("Listening... \n", .{});
 
@@ -79,19 +83,17 @@ pub fn main() !u8 { // returning u8 'cause I also want to handle errors respecti
     // ???: does this actually allocate the memory for the buffer? Don't I need to allocate it myself?
 
     while (true) {
-        const data_size = std.posix.recvfrom(sockfd, &buf, 0, @ptrCast(@constCast(&addr)), &addr_size) catch |err| {
-            // TODO: Also make own func for this recvfrom
-            // and make two files... one with posix implementation and one with own lib for this socket stuff
-            // talking 'bout that, make your socket programming lib for these kind of things probably
-            print("Error in recvfrom: {}\n", .{err});
-            return 1;
-        };
+
+        // const data_size = std.posix.recvfrom(sockfd, &buf, 0, @ptrCast(@constCast(&addr)), &addr_size) catch |err| {
+        //     print("Error in recvfrom: {}\n", .{err});
+        //     return 1;
+        // };
+
+        const data_size = linux.recvfrom(sockfd_i32, &buf, buf.len, 0, @ptrCast(@constCast(&addr)), &addr_size);
         if (data_size < 0) {
             print("Error receiving packet\n", .{});
             return 1;
         }
-
-        // print("Received packet: {d} bytes\n", .{data_size});
 
         // Now I have to proccess the gotten data (from buffer)
         // proccessPacket(buf, data_size, log_file);
