@@ -96,8 +96,7 @@ pub fn main() !u8 { // returning u8 'cause I also want to handle errors respecti
         }
 
         // Now I have to proccess the gotten data (from buffer)
-        // proccessPacket(buf, data_size, log_file);
-        util.proccessPacket(&buf);
+        try util.proccessPacket(&buf, &log_file);
     }
 
     return 0;

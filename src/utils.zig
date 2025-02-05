@@ -1,4 +1,5 @@
-pub const std = @import("std");
+const std = @import("std");
+const logger = @import("log.zig");
 pub const AF_PACKET = std.os.linux.AF.PACKET;
 pub const AF_INET = std.os.linux.AF.INET;
 pub const SOCK_RAW = std.os.linux.SOCK.RAW;
@@ -15,8 +16,15 @@ var icmp: u24 = 0;
 var tcp: u24 = 0;
 var igmp: u24 = 0;
 
-pub fn proccessPacket(buf: []u8) void {
+pub const Endian = enum {
+    big,
+    small,
+};
+
+pub fn proccessPacket(buf: []u8, file: *const std.fs.File) !void {
     // I want to get the ip header and use the protocol in switch statement to then count exact packets types
+
+    if (buf.len < 20) return;
 
     const ip_header = buf[0..20];
     const prot = ip_header[9];
@@ -24,15 +32,18 @@ pub fn proccessPacket(buf: []u8) void {
     switch (prot) {
         1 => {
             icmp += 1;
+            // logger.SaveIcmpLog(file);
         },
         2 => {
             igmp += 1;
         },
         6 => {
             tcp += 1;
+            try logger.SaveTcpLog(buf, file);
         },
         17 => {
             udp += 1;
+            // logger.SaveUdpLog(file);
         },
         else => {
             other += 1;
